@@ -39,34 +39,11 @@ mirrored, scaled differently on X and Y, or slightly skewed.
   web server and Moonraker must allow the required cross-origin requests.
 
 > [!IMPORTANT]
-> Until [BondtechAB/INDX PR #63](https://github.com/BondtechAB/INDX/pull/63) and
-> [PR #64](https://github.com/BondtechAB/INDX/pull/64) are merged, update the active
-> `indx-cal.cfg` before using Aim & Click:
->
-> 1. In Mainsail, open **Machine**, then open the `indx-cal.cfg` used by your printer.
-> 2. Rename these three macro section headers:
->
->    ```text
->    CAL_01_SET_CAMERA_REF  → CAL_ONE_SET_CAMERA_REF
->    CAL_02_PREP_TOOL_CAL   → CAL_TWO_PREP_TOOL_CAL
->    CAL_03_SAVE_XY_OFFSET  → CAL_THREE_SAVE_XY_OFFSET
->    ```
->
-> 3. Inside `CAL_THREE_SAVE_XY_OFFSET`, find the final offset command:
->
->    ```gcode
->    SET_GCODE_OFFSET X={"%.3f"|format(off_x)} Y={"%.3f"|format(off_y)} MOVE=1
->    ```
->
->    Remove only `MOVE=1`, leaving:
->
->    ```gcode
->    SET_GCODE_OFFSET X={"%.3f"|format(off_x)} Y={"%.3f"|format(off_y)}
->    ```
->
-> 4. Select **Save & Restart** in Mainsail.
->
-> Do not remove `MOVE=1` from `CAL_TWO_PREP_TOOL_CAL`; that is a separate preparation move.
+> Update your [BondtechAB/INDX](https://github.com/BondtechAB/INDX) configuration to the latest
+> `main` branch before using Aim & Click. It requires the current calibration macro names and the
+> XY offset save fix included in PRs
+> [#63](https://github.com/BondtechAB/INDX/pull/63) and
+> [#64](https://github.com/BondtechAB/INDX/pull/64).
 
 ## Safety
 
