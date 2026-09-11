@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nozzle Camera Calibrator</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><circle cx=%2216%22 cy=%2216%22 r=%2212%22 fill=%22none%22 stroke=%22%233fb950%22 stroke-width=%223%22/><path d=%22M16 2v8M16 22v8M2 16h8M22 16h8%22 stroke=%22%23f85149%22 stroke-width=%222%22/></svg>">
+  <link rel="stylesheet" href="css/app.css?v=20260911-6">
+</head>
+<body>
+  <svg class="filter-definitions" aria-hidden="true">
+    <filter id="cameraGamma" color-interpolation-filters="sRGB">
+      <feComponentTransfer>
+        <feFuncR id="gammaR" type="gamma" amplitude="1" exponent="1" offset="0"/>
+        <feFuncG id="gammaG" type="gamma" amplitude="1" exponent="1" offset="0"/>
+        <feFuncB id="gammaB" type="gamma" amplitude="1" exponent="1" offset="0"/>
+      </feComponentTransfer>
+    </filter>
+  </svg>
+  <header>
+    <h1>INDX Aim &amp; Click</h1>
+    <div id="status">Connecting…</div>
+  </header>
+  <main>
+    <div>
+      <div class="viewer" id="viewer" aria-label="Nozzle camera. Click the center of the nozzle orifice.">
+        <img id="stream" alt="Nozzle camera stream">
+        <div id="referenceSafeZone" aria-hidden="true"><span>Anywhere inside is fine</span></div>
+        <div class="crosshair" id="referenceCrosshair"></div>
+        <div id="marker"></div>
+        <div class="camera-toolbar" aria-label="Camera display controls">
+          <button id="zoomButton" title="Digital zoom">100%</button>
+          <button id="displayButton" title="Camera display settings" aria-label="Camera display settings"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+          <button id="displayReset" title="Reset display adjustments">↺</button>
+        </div>
+        <div id="displayPopover" class="display-popover" hidden>
+          <strong>Camera display settings</strong>
+          <label>Brightness <output id="brightnessValue">100%</output><input id="brightness" type="range" min="50" max="200" value="100"></label>
+          <label>Contrast <output id="contrastValue">100%</output><input id="contrast" type="range" min="50" max="200" value="100"></label>
+          <label>Gamma <output id="gammaValue">1.00</output><input id="gamma" type="range" min="50" max="250" value="100"></label>
+          <label>Crosshair size <output id="crosshairSizeValue">80 px</output><input id="crosshairSize" type="range" min="20" max="160" step="2" value="80"></label>
+          <label>Point circle size <output id="markerSizeValue">18 px</output><input id="markerSize" type="range" min="8" max="300" step="2" value="18"></label>
+          <p>Display only. Calibration coordinates are unchanged.</p>
+        </div>
+      </div>
+      <div id="pointPanel">
+      <div class="tools action-row">
+        <button id="confirmPoint" class="ok" disabled>Confirm this point</button>
+        <button id="cancelPoint">Cancel selection</button>
+      </div>
+      <div class="tools action-row">
+        <button id="save" class="ok" disabled>Save XY</button>
+      </div>
+      <div class="nudge-pad" aria-label="Nudge the selected point by one native image pixel">
+        <span class="blank"></span><button class="marker-nudge" data-px="0,-1" disabled>↑</button><span class="blank"></span>
+        <button class="marker-nudge" data-px="-1,0" disabled>←</button><span class="label">Point 1 px</span><button class="marker-nudge" data-px="1,0" disabled>→</button>
+        <span class="blank"></span><button class="marker-nudge" data-px="0,1" disabled>↓</button><span class="blank"></span>
+      </div>
+      </div>
+      <div id="jogPanel" hidden>
+        <div class="tools action-row">
+          <button id="confirmCenter" class="ok" disabled>Confirm T0 position</button>
+        </div>
+        <div class="machine-jog" aria-label="T0 machine-coordinate XY jog controls">
+          <button class="t0-jog" data-dx="0" data-dy="1" style="grid-area:1/4">+1.0</button>
+          <button class="t0-jog" data-dx="0" data-dy="0.5" style="grid-area:2/4">+0.5</button>
+          <button class="t0-jog" data-dx="0" data-dy="0.1" style="grid-area:3/4">+0.1</button>
+          <button class="t0-jog" data-dx="-1" data-dy="0" style="grid-area:4/1">−1.0</button>
+          <button class="t0-jog" data-dx="-0.5" data-dy="0" style="grid-area:4/2">−0.5</button>
+          <button class="t0-jog" data-dx="-0.1" data-dy="0" style="grid-area:4/3">−0.1</button>
+          <span class="jog-center" style="grid-area:4/4">T0</span>
+          <button class="t0-jog" data-dx="0.1" data-dy="0" style="grid-area:4/5">+0.1</button>
+          <button class="t0-jog" data-dx="0.5" data-dy="0" style="grid-area:4/6">+0.5</button>
+          <button class="t0-jog" data-dx="1" data-dy="0" style="grid-area:4/7">+1.0</button>
+          <button class="t0-jog" data-dx="0" data-dy="-0.1" style="grid-area:5/4">−0.1</button>
+          <button class="t0-jog" data-dx="0" data-dy="-0.5" style="grid-area:6/4">−0.5</button>
+          <button class="t0-jog" data-dx="0" data-dy="-1" style="grid-area:7/4">−1.0</button>
+          <span class="axis-label axis-y-plus">Y+</span><span class="axis-label axis-y-minus">Y−</span>
+          <span class="axis-label axis-x-minus">X−</span><span class="axis-label axis-x-plus">X+</span>
+        </div>
+        <div class="coordinate-entry" aria-label="Move T0 to an exact camera position">
+          <label>X <input id="targetX" type="number" step="0.1"></label>
+          <label>Y <input id="targetY" type="number" step="0.1"></label>
+          <label>Z <input id="targetZ" type="number" step="0.1"></label>
+          <button id="loadCurrentPosition">Load current XYZ</button>
+          <button id="moveToPosition" class="primary">Move to XYZ</button>
+        </div>
+        <p class="coordinate-note">Enter an approximate camera position for the initial move. A confirmation is shown before motion, with an additional collision warning at Z 25 mm or lower.</p>
+        <p>Move T0 anywhere inside the dashed box. Exact centering is not required.</p>
+      </div>
+    </div>
+    <aside>
+      <section class="utility-section">
+        <h2>Calibration data</h2>
+        <button id="clearCalibration" class="danger">Clear camera calibration data</button>
+      </section>
+      <section class="status-section">
+        <h2>Status</h2>
+        <div id="message">Align T0 with the crosshair, then register the reference.</div>
+        <div id="position" class="data"></div>
+      </section>
+      <section id="centerStep" class="workflow-step">
+        <h2><button class="step-toggle" type="button"><span>Center T0</span><span class="step-heading-meta"><span class="stepState"></span><span class="step-chevron">⌃</span></span></button></h2>
+        <div class="step-body">
+        <button id="prepareT0">Pick T0 and move to camera</button>
+        <p>The controls below the camera switch to machine-coordinate jogging and confirmation while T0 is being positioned.</p>
+        <p id="jogLockReason" class="warning" hidden>Position controls are locked because calibration data already exists. Clear camera calibration data to reposition T0.</p>
+        </div>
+      </section>
+      <section id="referenceStep" class="workflow-step">
+        <h2><button class="step-toggle" type="button"><span>T0 reference</span><span class="step-heading-meta"><span class="stepState"></span><span class="step-chevron">⌃</span></span></button></h2>
+        <div class="step-body">
+        <div class="axis-calibration-action" aria-label="Axis calibration move distance">
+          <div class="axis-calibration-label">Calibrate image axes with</div>
+          <div class="axis-distance">
+            <button class="axis-calibration-button primary" data-distance="1">1.0 mm · Recommended</button>
+            <button class="axis-calibration-button" data-distance="0.5">0.5 mm</button>
+            <button class="axis-calibration-button" data-distance="0.25">0.25 mm</button>
+          </div>
+        </div>
+        <p>If the orifice moves outside the camera image, press “Abort axis calibration”, then retry with a smaller distance.</p>
+        <div id="calData" class="data">Not calibrated</div>
+        </div>
+      </section>
+      <section id="toolsStep" class="workflow-step">
+        <h2><button class="step-toggle" type="button"><span>Tools</span><span class="step-heading-meta"><span class="stepState"></span><span class="step-chevron">⌃</span></span></button></h2>
+        <div class="step-body">
+        <div class="tools" id="toolButtons"></div>
+        <p id="toolGuide">T0 is the reference and is not saved. Calibrate the image axes, then start with T1.</p>
+        </div>
+      </section>
+    </aside>
+  </main>
+  <script type="module" src="js/app.js?v=20260911-20"></script>
+</body>
+</html>
