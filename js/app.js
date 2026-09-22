@@ -2,25 +2,29 @@ import {
   createCalibrationMatrix, IMAGE_HEIGHT, IMAGE_WIDTH, imagePointFromClient, imagePointToClient,
   isPointInCentralRegion, movementToReference, nudgePoint
 } from './calibration-core.js';
-import { IndxAdapter } from './indx-adapter.js?v=20260911-9';
+import { IndxAdapter } from './indx-adapter.js?v=20260922-1';
 
 const elements = Object.fromEntries([
   'viewer','stream','referenceSafeZone','marker','referenceCrosshair','message','status','position','calData',
   'prepareT0','confirmCenter','pointPanel','jogPanel','clearCalibration','save','toolGuide','confirmPoint','cancelPoint','toolButtons',
   'zoomButton','displayButton','displayReset','displayPopover','brightness','contrast','gamma','crosshairSize','markerSize',
   'brightnessValue','contrastValue','gammaValue','crosshairSizeValue','markerSizeValue','gammaR','gammaG','gammaB',
-  'targetX','targetY','targetZ','loadCurrentPosition','moveToPosition','jogLockReason','centerStep','referenceStep','toolsStep'
+  'targetX','targetY','targetZ','loadCurrentPosition','moveToPosition','jogLockReason','centerStep','referenceStep','toolsStep',
+  'cameraSelect','emergencyStop','undoStep','offsetRows'
 ].map(id => [id, document.getElementById(id)]));
 const query = new URLSearchParams(location.search);
 const adapter = new IndxAdapter(globalThis.fetch.bind(globalThis), query.get('moonraker') || '');
-elements.stream.src = query.get('camera') || '/webcam/?action=stream';
+const cameraOverride = query.get('camera');
 
 const referenceKey = 'indxPublicCamReferenceV1';
 const matrixKey = 'indxPublicCamMatrixV1';
 const completedToolsKey = 'indxPublicCamCompletedToolsV1';
+const selectedCameraKey = 'indxAimClickSelectedCameraV1';
 let reference = JSON.parse(localStorage.getItem(referenceKey) || 'null');
 let matrix = JSON.parse(localStorage.getItem(matrixKey) || 'null');
 let completedTools = new Set(JSON.parse(localStorage.getItem(completedToolsKey) || '[]').map(Number).filter(Number.isInteger));
+let selectedCameraName = localStorage.getItem(selectedCameraKey) || '';
+let webcams = [];
 let stage = 'idle';
 let xPoint = null;
 let pendingPoint = null;
@@ -43,6 +47,60 @@ if (savedDisplaySettings) {
   for (const key of ['brightness','contrast','gamma','crosshairSize','markerSize']) {
     if (Number.isFinite(Number(savedDisplaySettings[key]))) elements[key].value = savedDisplaySettings[key];
   }
+}
+
+function appState() {
+  return {version:1,reference,matrix,completedTools:[...completedTools].sort((a,b)=>a-b),selectedCameraName};
+}
+
+function persistAppState() {
+  localStorage.setItem(referenceKey, JSON.stringify(reference));
+  localStorage.setItem(matrixKey, JSON.stringify(matrix));
+  localStorage.setItem(completedToolsKey, JSON.stringify([...completedTools].sort((a,b)=>a-b)));
+  localStorage.setItem(selectedCameraKey, selectedCameraName);
+  adapter.saveAppState(appState()).catch(() => {});
+}
+
+async function restoreAppState() {
+  try {
+    const saved = await adapter.loadAppState();
+    if (!saved || saved.version !== 1) return;
+    if (saved.reference) { reference = saved.reference; centerConfirmed = true; }
+    if (saved.matrix) matrix = saved.matrix;
+    if (Array.isArray(saved.completedTools)) completedTools = new Set(saved.completedTools.filter(Number.isInteger));
+    if (typeof saved.selectedCameraName === 'string') selectedCameraName = saved.selectedCameraName;
+  } catch (_error) { /* local storage remains the offline fallback */ }
+}
+
+function cameraStreamUrl(webcam) {
+  return webcam?.streamUrl || cameraOverride || '/webcam/?action=stream';
+}
+
+function applySelectedCamera() {
+  const webcam = webcams.find(item => item.name === selectedCameraName);
+  const url = cameraStreamUrl(webcam);
+  if (elements.stream.src !== new URL(url, location.href).href) elements.stream.src = url;
+}
+
+async function loadWebcams() {
+  if (cameraOverride) {
+    elements.cameraSelect.replaceChildren(new Option('URL override', cameraOverride));
+    elements.cameraSelect.disabled = true;
+    elements.stream.src = cameraOverride;
+    return;
+  }
+  try { webcams = await adapter.listWebcams(); } catch (_error) { webcams = []; }
+  elements.cameraSelect.replaceChildren();
+  if (!webcams.length) {
+    elements.cameraSelect.append(new Option('Default webcam', ''));
+    selectedCameraName = '';
+  } else {
+    for (const webcam of webcams) elements.cameraSelect.append(new Option(webcam.name, webcam.name));
+    if (!webcams.some(item => item.name === selectedCameraName)) selectedCameraName = webcams[0].name;
+    elements.cameraSelect.value = selectedCameraName;
+  }
+  applySelectedCamera();
+  persistAppState();
 }
 
 function renderCameraDisplay() {
@@ -219,6 +277,32 @@ function renderCalibration() {
   elements.save.hidden = calibrationTool === null;
   elements.save.classList.toggle('primary', unsavedTool !== null && unsavedTool === calibrationTool);
   elements.clearCalibration.disabled = busy;
+  elements.undoStep.disabled = busy || (!pendingPoint && stage === 'idle' && !lastConfirmedCorrection && !matrix && !reference);
+}
+
+function renderOffsets(state) {
+  const count = state?.toolCount || renderedToolCount || 0;
+  const variables = state?.variables || {};
+  elements.offsetRows.replaceChildren();
+  if (!count) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td'); cell.colSpan = 4; cell.textContent = 'Waiting for printer…';
+    row.append(cell); elements.offsetRows.append(row); return;
+  }
+  for (let tool=0; tool<count; tool++) {
+    const x = tool === 0 ? 0 : Number(variables[`t${tool}_offset_x`]);
+    const y = tool === 0 ? 0 : Number(variables[`t${tool}_offset_y`]);
+    const saved = Number.isFinite(x) && Number.isFinite(y);
+    const row = document.createElement('tr');
+    for (const value of [`T${tool}`, saved ? x.toFixed(3) : '—', saved ? y.toFixed(3) : '—']) {
+      const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+    }
+    const status = document.createElement('td');
+    const dirty = unsavedTool === tool;
+    status.textContent = dirty ? 'unsaved' : saved ? 'saved' : 'not calibrated';
+    status.className = dirty ? 'unsaved' : saved ? 'saved' : '';
+    row.append(status); elements.offsetRows.append(row);
+  }
 }
 
 document.querySelectorAll('.step-toggle').forEach(button => {
@@ -250,6 +334,38 @@ elements.prepareT0.onclick = async () => {
       ? 'T0 is at the saved camera position. Check it against the red crosshair; calibration data is unchanged.'
       : 'T0 is at the camera. Use the machine-coordinate jog controls to place it near the image center.', 'ok');
   } catch (error) { stage = 'idle'; say(error.message,'error'); }
+};
+
+elements.cameraSelect.onchange = () => {
+  selectedCameraName = elements.cameraSelect.value;
+  applySelectedCamera(); persistAppState();
+  say(`Camera changed to ${selectedCameraName || 'default webcam'}. If its resolution differs, calibration will be cleared automatically.`,'ok');
+};
+
+elements.emergencyStop.onclick = async () => {
+  if (!window.confirm('EMERGENCY STOP immediately shuts down Klipper and disables motion/heaters. Continue?')) return;
+  elements.emergencyStop.disabled = true;
+  try { await adapter.emergencyStop(); }
+  catch (error) { say(`Emergency stop request: ${error.message}`,'error'); }
+  finally { elements.emergencyStop.disabled = false; }
+};
+
+elements.undoStep.onclick = async () => {
+  if (busy) return;
+  if (pendingPoint || stage === 'captureX' || stage === 'captureY' || lastConfirmedCorrection) {
+    elements.cancelPoint.click(); return;
+  }
+  if (matrix) {
+    matrix = null; completedTools = new Set(); calibrationTool = null; unsavedTool = null;
+    localStorage.removeItem(matrixKey); localStorage.removeItem(completedToolsKey);
+    persistAppState(); renderCalibration(); renderOffsets(latestState);
+    say('Image-axis calibration was undone. The T0 reference was kept.','ok'); return;
+  }
+  if (reference) {
+    reference = null; centerConfirmed = false; t0Prepared = true; stage = 'idle';
+    localStorage.removeItem(referenceKey); persistAppState(); renderCalibration();
+    say('T0 reference was undone. Select its center again.','ok');
+  }
 };
 
 elements.confirmCenter.onclick = () => {
@@ -316,7 +432,7 @@ elements.cancelPoint.onclick = async () => {
       await locked(() => adapter.moveRelative(-correction.x, -correction.y));
       unsavedTool = null; lastConfirmedCorrection = null;
       elements.toolGuide.textContent = `T${calibrationTool}: click the orifice center again, then confirm.`;
-      renderCalibration();
+      renderCalibration(); renderOffsets(latestState);
       say(`T${calibrationTool} returned to its pre-confirm position. Click the orifice center again.`,'ok');
     } catch (error) { renderCalibration(); say(error.message,'error'); }
     return;
@@ -340,6 +456,7 @@ elements.clearCalibration.onclick = () => {
   lastConfirmedCorrection = null;
   completedTools = new Set();
   centerConfirmed = false; t0Prepared = false;
+  persistAppState();
   clearPendingPoint(); renderCalibration();
   elements.toolGuide.textContent = 'T0 is the reference and is not saved. Calibrate the image axes, then start with T1.';
   say('Camera calibration data cleared. Start again from the T0 reference.','ok');
@@ -383,6 +500,7 @@ elements.confirmPoint.onclick = async () => {
       }
       reference = {x:point.x, y:point.y, width, height}; matrix = null;
       localStorage.setItem(referenceKey, JSON.stringify(reference)); localStorage.removeItem(matrixKey);
+      persistAppState();
       stage = 'idle'; clearPendingPoint(); renderCalibration();
       say('T0 image reference saved. Next, calibrate the image axes with the 1 mm moves.','ok');
       return;
@@ -398,6 +516,7 @@ elements.confirmPoint.onclick = async () => {
       localStorage.setItem(matrixKey, JSON.stringify(matrix));
       await locked(() => adapter.moveRelative(0, -axisDistance));
       await locked(() => adapter.saveCameraReference());
+      persistAppState();
       clearPendingPoint(); stage = 'idle'; renderCalibration();
       say('Image-axis calibration complete; T0 has returned. Verify the orifice matches the red crosshair, then select T1.','ok');
       return;
@@ -410,9 +529,10 @@ elements.confirmPoint.onclick = async () => {
     lastConfirmedCorrection = {x:move.x,y:move.y};
     completedTools.delete(calibrationTool);
     localStorage.setItem(completedToolsKey, JSON.stringify([...completedTools]));
+    persistAppState();
     elements.save.textContent = `Save T${calibrationTool} XY`;
     elements.toolGuide.textContent = `T${calibrationTool}: correction confirmed but not saved. Save before continuing.`;
-    renderCalibration();
+    renderCalibration(); renderOffsets(latestState);
     clearPendingPoint();
     say(`Correction applied. Save T${calibrationTool} XY before continuing.`,'ok');
   } catch (error) { say(error.message,'error'); }
@@ -462,10 +582,12 @@ elements.save.onclick = async () => {
     const verified = await locked(() => adapter.saveAndVerifyToolOffset(tool));
     completedTools.add(tool);
     localStorage.setItem(completedToolsKey, JSON.stringify([...completedTools].sort((a,b) => a-b)));
+    persistAppState();
     say(`✓ T${tool} XY save verified: X ${verified.saved.x.toFixed(3)} / Y ${verified.saved.y.toFixed(3)} mm (no nozzle motion)`,'ok');
     unsavedTool = null; calibrationTool = null; lastConfirmedCorrection = null; elements.save.textContent = `Save XY for ${toolRangeLabel}`;
     elements.toolGuide.textContent = 'The nozzle remains in place after saving. If it matches the crosshair, select the next tool.';
-    renderCalibration();
+    latestState = await adapter.getStatus();
+    renderCalibration(); renderOffsets(latestState);
   } catch (error) { say(error.message,'error'); }
 };
 
@@ -476,6 +598,7 @@ async function refreshStatus() {
     const coordinateInputs = [elements.targetX,elements.targetY,elements.targetZ];
     if (!elements.jogPanel.hidden && !coordinateInputs.includes(document.activeElement)) loadCurrentPositionIntoInputs();
     if (state.toolCount) renderToolButtons(state.toolCount);
+    renderOffsets(state);
     elements.status.textContent = `${adapter.name} connected | T${state.activeTool ?? '?'} | ${state.homedAxes || 'unhomed'}`;
     elements.position.textContent = `X ${state.position[0].toFixed(3)}  Y ${state.position[1].toFixed(3)}  Z ${state.position[2].toFixed(3)}\nactive_tool ${state.activeTool}  tool_count ${state.toolCount ?? '?'}`;
   } catch (_error) { elements.status.textContent = `${adapter.name} disconnected`; }
@@ -486,10 +609,15 @@ elements.stream.addEventListener('load', () => {
   if (reference && (reference.width !== width || reference.height !== height)) {
     [referenceKey, matrixKey, completedToolsKey].forEach(key => localStorage.removeItem(key));
     reference = null; matrix = null; completedTools = new Set(); centerConfirmed = false; t0Prepared = false;
+    persistAppState();
     say(`Camera resolution changed to ${width}×${height}. Camera calibration data was cleared; recalibrate T0.`,'error');
   }
   renderCalibration();
 });
 window.addEventListener('resize', () => { renderCalibration(); });
-renderCalibration(); refreshStatus(); setInterval(refreshStatus, 2000);
-renderCameraDisplay();
+async function initialize() {
+  await restoreAppState();
+  await loadWebcams();
+  renderCalibration(); renderCameraDisplay(); refreshStatus(); setInterval(refreshStatus, 2000);
+}
+initialize();

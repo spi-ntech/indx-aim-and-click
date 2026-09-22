@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nozzle Camera Calibrator</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><circle cx=%2216%22 cy=%2216%22 r=%2212%22 fill=%22none%22 stroke=%22%233fb950%22 stroke-width=%223%22/><path d=%22M16 2v8M16 22v8M2 16h8M22 16h8%22 stroke=%22%23f85149%22 stroke-width=%222%22/></svg>">
-  <link rel="stylesheet" href="css/app.css?v=20260911-6">
+  <link rel="stylesheet" href="css/app.css?v=20260922-1">
 </head>
 <body>
   <svg class="filter-definitions" aria-hidden="true">
@@ -19,7 +19,11 @@
   </svg>
   <header>
     <h1>INDX Aim &amp; Click</h1>
-    <div id="status">Connecting…</div>
+    <div class="header-actions">
+      <label class="camera-select-label">Camera <select id="cameraSelect" aria-label="Nozzle camera"><option value="">Default webcam</option></select></label>
+      <div id="status">Connecting…</div>
+      <button id="emergencyStop" class="emergency" type="button">EMERGENCY STOP</button>
+    </div>
   </header>
   <main>
     <div>
@@ -92,6 +96,7 @@
     <aside>
       <section class="utility-section">
         <h2>Calibration data</h2>
+        <button id="undoStep" disabled>Undo last calibration step</button>
         <button id="clearCalibration" class="danger">Clear camera calibration data</button>
       </section>
       <section class="status-section">
@@ -127,10 +132,16 @@
         <div class="step-body">
         <div class="tools" id="toolButtons"></div>
         <p id="toolGuide">T0 is the reference and is not saved. Calibrate the image axes, then start with T1.</p>
+        <div class="offset-table-wrap">
+          <table class="offset-table">
+            <thead><tr><th>Tool</th><th>X</th><th>Y</th><th>Status</th></tr></thead>
+            <tbody id="offsetRows"><tr><td colspan="4">Waiting for printer…</td></tr></tbody>
+          </table>
+        </div>
         </div>
       </section>
     </aside>
   </main>
-  <script type="module" src="js/app.js?v=20260911-20"></script>
+  <script type="module" src="js/app.js?v=20260922-1"></script>
 </body>
 </html>

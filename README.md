@@ -22,6 +22,12 @@ mirrored, scaled differently on X and Y, or slightly skewed.
 - Supports camera rotation, inversion, unequal X/Y scale and shear.
 - Reads the tool count from `gcode_macro TOOL_POSITIONS.tool_count`.
 - Verifies each saved XY offset by reading it back from Klipper variables.
+- Lists configured Moonraker webcams and remembers the selected camera.
+- Shows every saved tool offset and whether the current correction is unsaved.
+- Provides an immediate, confirmed Klipper emergency-stop control.
+- Stores completed calibration state in a dedicated Moonraker database namespace, with browser
+  storage as an offline fallback.
+- Supports step-wise undo for point selection, axis calibration, T0 reference and tool correction.
 - Includes brightness, contrast, gamma, zoom, crosshair-size and point-circle-size controls that do
   not affect calibration.
 
@@ -70,8 +76,9 @@ chmod +x install.sh
 ./install.sh
 ```
 
-The installer detects `~/mainsail` or `~/fluidd`, copies the application into the existing web
-directory, and prints the address to open.
+The installer detects `~/mainsail` or `~/fluidd`, links the application into the existing web
+directory, adds a Mainsail sidebar entry, and registers the repository with Moonraker's Update
+Manager. Restart Moonraker once after the first installation, then refresh Mainsail.
 
 To update later:
 
@@ -155,3 +162,7 @@ The public build stores only the following data in browser local storage:
 
 No camera images or motion-diagnostic records are saved or uploaded by this build. Actual tool
 offsets are stored by the existing INDX save macro, not by browser local storage.
+
+The T0 image reference, image-axis matrix, completed-tool markers and selected webcam are also
+stored in Moonraker's `indx_aim_and_click` database namespace. In-progress physical moves are never
+restored after a browser reload.

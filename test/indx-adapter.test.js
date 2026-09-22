@@ -112,3 +112,42 @@ test('waits for tracked completion after a proxy timeout without resending', asy
   assert.equal(submitted,1);
   assert.equal(result.recoveredAfterProxyTimeout,true);
 });
+
+test('lists Moonraker webcams and normalizes stream URLs', async () => {
+  const adapter = new IndxAdapter(async url => {
+    assert.equal(url, '/server/webcams/list');
+    return {ok:true,json:async()=>({result:{webcams:[
+      {name:'Nozzle',stream_url:'/webcam2/?action=stream',snapshot_url:'/webcam2/?action=snapshot'},
+      {name:'Disabled',stream_url:''}
+    ]}})};
+  });
+  assert.deepEqual(await adapter.listWebcams(), [{
+    name:'Nozzle',streamUrl:'/webcam2/?action=stream',snapshotUrl:'/webcam2/?action=snapshot'
+  }]);
+});
+
+test('uses Moonraker emergency stop endpoint', async () => {
+  const calls = [];
+  const adapter = new IndxAdapter(async (url, options) => {
+    calls.push({url,options});
+    return {ok:true,json:async()=>({result:'ok'})};
+  });
+  await adapter.emergencyStop();
+  assert.equal(calls[0].url, '/printer/emergency_stop');
+  assert.equal(calls[0].options.method, 'POST');
+});
+
+test('stores persistent calibration state in a dedicated Moonraker namespace', async () => {
+  const calls = [];
+  const adapter = new IndxAdapter(async (url, options) => {
+    calls.push({url,options});
+    return {ok:true,status:200,json:async()=> options
+      ? {result:{value:JSON.parse(options.body).value}}
+      : {result:{value:{selectedCamera:'Nozzle'}}}};
+  });
+  assert.deepEqual(await adapter.loadAppState(), {selectedCamera:'Nozzle'});
+  await adapter.saveAppState({selectedCamera:'Nozzle'});
+  const body = JSON.parse(calls[1].options.body);
+  assert.equal(body.namespace, 'indx_aim_and_click');
+  assert.equal(body.key, 'calibration');
+});

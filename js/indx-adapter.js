@@ -73,6 +73,47 @@ export class IndxAdapter {
     };
   }
 
+  async listWebcams() {
+    const response = await this.fetch(`${this.baseUrl}/server/webcams/list`);
+    const payload = await response.json();
+    if (!response.ok || payload.error) {
+      throw new Error(payload.error?.message || `HTTP ${response.status}`);
+    }
+    return (payload.result?.webcams || []).map(webcam => ({
+      name: String(webcam.name || 'Webcam'),
+      streamUrl: String(webcam.stream_url || ''),
+      snapshotUrl: String(webcam.snapshot_url || '')
+    })).filter(webcam => webcam.streamUrl);
+  }
+
+  async emergencyStop() {
+    const response = await this.fetch(`${this.baseUrl}/printer/emergency_stop`, {method:'POST'});
+    let payload = {};
+    try { payload = await response.json(); } catch (_error) { /* shutdown can close the response */ }
+    if (!response.ok || payload.error) {
+      throw new Error(payload.error?.message || `HTTP ${response.status}`);
+    }
+    return payload;
+  }
+
+  async loadAppState() {
+    const response = await this.fetch(`${this.baseUrl}/server/database/item?namespace=indx_aim_and_click&key=calibration`);
+    const payload = await response.json();
+    if (response.status === 404 || payload.error) return null;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return payload.result?.value ?? null;
+  }
+
+  async saveAppState(value) {
+    const response = await this.fetch(`${this.baseUrl}/server/database/item`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({namespace:'indx_aim_and_click',key:'calibration',value})
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.error) throw new Error(payload.error?.message || `HTTP ${response.status}`);
+    return payload.result;
+  }
+
   async prepareTool(tool) {
     const status = await this.getStatus();
     const variables = status.variables || {};
